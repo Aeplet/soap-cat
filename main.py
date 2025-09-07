@@ -1,17 +1,18 @@
+import asyncio
 import datetime
 import discord
-import soap_cat_errors
 import json
-import zipfile
-from base64 import b64decode
 import os
 import requests
+import soap_cat_errors
+import zipfile
+from base64 import b64decode
 from cleaninty.ctr.simpledevice import SimpleCtrDevice
 from cleaninty.ctr.soap.manager import CtrSoapManager
 from cleaninty.ctr.soap import helpers
+from db_abstractor import the_db
 from discord.ext import commands
 from dotenv import load_dotenv
-from db_abstractor import the_db
 from cleaninty_abstractor import cleaninty_abstractor
 from cleaninty.nintendowifi.soapenvelopebase import SoapCodeError
 from io import BytesIO, StringIO
@@ -21,6 +22,7 @@ from pyctr.type.exefs import ExeFSReader
 bot = discord.Bot(owner_id=966381737393414144)
 log_channel = None
 load_dotenv()
+soap_lock = asyncio.Lock()
 
 
 def can_run():
@@ -148,7 +150,7 @@ async def doasoap(
 
         elif serial[: len(soap_serial)] != soap_serial:
             resultStr += f"secinfo serial and given serial do not match!\nsecinfo: {soap_serial}\ngiven: {serial[: len(soap_serial)]}\n"
-            resultStr += "nothing has been done to any donors or the soapee\n```"
+            resultStr += "nothing has been done to any donors or the soapee"
             await ctx.respond(ephemeral=True, content=resultStr)
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to mismatching serials"
@@ -157,69 +159,79 @@ async def doasoap(
         else:
             resultStr += "secinfo serial and given serial match, continuing\n"
 
-    try:
-        dev = SimpleCtrDevice(json_string=soap_json)
-        soapMan = CtrSoapManager(dev, False)
-        helpers.CtrSoapCheckRegister(soapMan)
-        cleaninty = cleaninty_abstractor()
-    except Exception as e:
-        await ctx.respond(ephemeral=True, content=f"Cleaninty error:\n```\n{e}\n```")
-        await log(
-            f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to a cleaninty error"
-        )
-        return
-
-    soap_json = dev.serialize_json()
-
-    if json.loads(soap_json)["region"] == "USA":
-        source_region_change = "JPN"
-        source_country_change = "JP"
-        source_language_change = "ja"
-    else:
-        source_region_change = "USA"
-        source_country_change = "US"
-        source_language_change = "en"
-
-    resultStr += "Attempting eShopRegionChange on source...\n"
-    try:
-        soap_json, resultStr = cleaninty.eshop_region_change(
-            json_string=soap_json,
-            region=source_region_change,
-            country=source_country_change,
-            language=source_language_change,
-            result_string=resultStr,
+    if soap_lock.locked():
+        await ctx.respond(
+            ephemeral=True,
+            content="Another soap operation is currently being processed, please wait...",
         )
 
-    except SoapCodeError as err:
-        await log(err)
-        await log(err.soaperrorcode)
-        if err.soaperrorcode != 602:
-            await log(
-                f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to non-602 soap error code (wtf)"
+    async with soap_lock:
+        try:
+            dev = SimpleCtrDevice(json_string=soap_json)
+            soapMan = CtrSoapManager(dev, False)
+            helpers.CtrSoapCheckRegister(soapMan)
+            cleaninty = cleaninty_abstractor()
+        except Exception as e:
+            await ctx.respond(
+                ephemeral=True, content=f"Cleaninty error:\n```\n{e}\n```"
             )
-            raise err
+            await log(
+                f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to a cleaninty error"
+            )
+            return
 
-        resultStr += "sticky titles are sticking, doing system transfer...\n"
-        lottery = False
+        soap_json = dev.serialize_json()
 
-        soap_json, donor_json_name, resultStr = cleaninty.do_transfer_with_donor(
-            soap_json, resultStr
-        )
+        if json.loads(soap_json)["region"] == "USA":
+            source_region_change = "JPN"
+            source_country_change = "JP"
+            source_language_change = "ja"
+        else:
+            source_region_change = "USA"
+            source_country_change = "US"
+            source_language_change = "en"
 
-        resultStr += f" `{donor_json_name}` is now on cooldown\n"
+        resultStr += "Attempting eShopRegionChange on source...\n"
+        try:
+            soap_json, resultStr = await asyncio.to_thread(
+                cleaninty.eshop_region_change,
+                json_string=soap_json,
+                region=source_region_change,
+                country=source_country_change,
+                language=source_language_change,
+                result_string=resultStr,
+            )
+
+        except SoapCodeError as err:
+            if err.soaperrorcode != 602:
+                await log(
+                    f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to non-602 soap error code (wtf)"
+                )
+                raise err
+
+            resultStr += "sticky titles are sticking, doing system transfer...\n"
+            lottery = False
+
+            soap_json, donor_json_name, resultStr = await asyncio.to_thread(
+                cleaninty.do_transfer_with_donor, soap_json, resultStr
+            )
+
+            resultStr += f" `{donor_json_name}` is now on cooldown\n"
+
+            helpers.CtrSoapCheckRegister(soapMan)
+            soap_json = cleaninty.clean_json(soap_json)
+
+        else:
+            resultStr += "sticky titles aren't sticking or don't exist (you won the soap lottery), deleting eShop account...\n"
+            lottery = True
+            soap_json, resultStr = await asyncio.to_thread(
+                cleaninty.delete_eshop_account,
+                json_string=soap_json,
+                result_string=resultStr,
+            )
 
         helpers.CtrSoapCheckRegister(soapMan)
         soap_json = cleaninty.clean_json(soap_json)
-
-    else:
-        resultStr += "sticky titles aren't sticking or don't exist (you won the soap lottery), deleting eShop account...\n"
-        lottery = True
-        soap_json, resultStr = cleaninty.delete_eshop_account(
-            json_string=soap_json, result_string=resultStr
-        )
-
-    helpers.CtrSoapCheckRegister(soapMan)
-    soap_json = cleaninty.clean_json(soap_json)
 
     await log(f"soap for {ctx.author.global_name} ({ctx.author.id}) succeeded")
     resultStr += "Done!"
@@ -297,8 +309,12 @@ async def soapcheck(ctx: discord.ApplicationContext):
     available_donors = 0
 
     for i in range(loopcount):
-        if (donors[i][2] + 604800) <= the_time:
+        if donors[i][2] in [1, 3]:
+            embed.add_field(name=donors[i][0], value="Disabled")
+
+        elif (donors[i][2] + 604800) <= the_time:
             embed.add_field(name=donors[i][0], value="Ready!")
+
         else:
             embed.add_field(
                 name=f"{donors[i][0]}", value=f"Ready <t:{donors[i][2] + 604800}:R>"
@@ -403,35 +419,42 @@ async def uploaddonortodb(
 
     await log(f"uploading donor from {ctx.author.global_name} ({ctx.author.id})")
 
-    try:
-        donor_json = cleaninty.eshop_region_change(
-            json_string=donor_json,
-            region=donor_region_change,
-            country=donor_country_change,
-            language=donor_language_change,
-            result_string="",
-        )[0]
-    except SoapCodeError as err:
-        if err.soaperrorcode != 602:
-            raise err
+    if soap_lock.locked():
+        await ctx.respond(
+            ephemeral=True,
+            content="Another soap operation is currently being processed, please wait...",
+        )
 
-        donor_json = cleaninty.do_transfer_with_donor(donor_json, "")[0]
+    async with soap_lock:
+        try:
+            donor_json = cleaninty.eshop_region_change(
+                json_string=donor_json,
+                region=donor_region_change,
+                country=donor_country_change,
+                language=donor_language_change,
+                result_string="",
+            )[0]
+        except SoapCodeError as err:
+            if err.soaperrorcode != 602:
+                raise err
 
-        donor_json = cleaninty.eshop_region_change(
-            json_string=donor_json,
-            region=donor_region_change,
-            country=donor_country_change,
-            language=donor_language_change,
-            result_string="",
-        )[0]
+            donor_json = cleaninty.do_transfer_with_donor(donor_json, "")[0]
 
-    mySQL_DB.write_donor(
-        name=donor_name,
-        json=cleaninty.clean_json(donor_json),
-        last_transferred=cleaninty.get_last_moved_time(donor_json),
-        uploader=ctx.author.id,
-        note=note,
-    )
+            donor_json = cleaninty.eshop_region_change(
+                json_string=donor_json,
+                region=donor_region_change,
+                country=donor_country_change,
+                language=donor_language_change,
+                result_string="",
+            )[0]
+
+        mySQL_DB.write_donor(
+            name=donor_name,
+            json=cleaninty.clean_json(donor_json),
+            last_transferred=cleaninty.get_last_moved_time(donor_json),
+            uploader=ctx.author.id,
+            note=note,
+        )
 
     await ctx.respond(
         ephemeral=True,
@@ -459,13 +482,28 @@ async def donorinfo(ctx: discord.ApplicationContext, name: str):
     uploader = await ctx.bot.fetch_user(donor[3])
     embed.set_thumbnail(url=uploader.display_avatar.url)
 
-    if donor is None:
-        await ctx.respond(ephemeral=True, content=f"`{name}` not found")
-        return
-
-    embed.add_field(name="Uploader:", value=uploader.name)
-    embed.add_field(name="Last transfer time:", value=f"<t:{donor[2]}:f>")
+    embed.add_field(name="Uploader:", value=f"{uploader.name} ({uploader.id})")
     embed.add_field(name="Note:", value=donor[4])
+    if donor[2] > 10:
+        embed.add_field(name="Last transfer time:", value=f"<t:{donor[2]}:f>")
+    else:
+        embed.add_field(
+            name="Last transfer time:", value="Donor must be enabled to get lt"
+        )
+
+    match donor[2]:
+        case 0:
+            embed.add_field(
+                name="Status:", value="0, this should not be possible"
+            )  # "Being prepared for soaping"
+        case 1:
+            embed.add_field(name="Status:", value="Manually disabled")
+        case 2:
+            embed.add_field(name="Status:", value="2, this should not be possible")
+        case 3:
+            embed.add_field(name="Status:", value="Automatically disabled due to error")
+        case _:
+            embed.add_field(name="Status:", value="Healthy and enabled")
 
     await ctx.respond(ephemeral=True, embed=embed)
 
@@ -497,6 +535,63 @@ async def downloaddonors(ctx: discord.ApplicationContext):
         ephemeral=True,
         file=discord.File(fp=BytesIO(output.getvalue()), filename="donors.zip"),
     )
+
+
+@bot.slash_command(name="disabledonor")
+@discord.option(name="name", type=str)
+async def disabledonor(ctx: discord.ApplicationContext, name: str):
+    try:
+        await ctx.defer(ephemeral=True)
+    except discord.errors.NotFound:
+        return
+
+    db = the_db()
+    donor = db.read_index(table="donors", index_field_name="name", index=name)
+
+    if donor is None:
+        await ctx.respond(ephemeral=True, content=f"The donor `{name}` does not exist!")
+        return
+
+    elif donor[2] in [1, 3]:
+        await ctx.respond(ephemeral=True, content="This donor is already disabled")
+        return
+
+    else:
+        await asyncio.to_thread(db.set_donor_lt_time, name, 1)
+        await ctx.respond(
+            ephemeral=True,
+            content=f"`{name}` is now disabled\nuse enabledonor to re-enable it if wanted",
+        )
+        await log(f"{ctx.author.name} ({ctx.author.id}) disabled `{name}`")
+
+
+@bot.slash_command(name="enabledonor")
+@discord.option(name="name", type=str)
+async def enabledonor(ctx: discord.ApplicationContext, name: str):
+    try:
+        await ctx.defer(ephemeral=True)
+    except discord.errors.NotFound:
+        return
+
+    db = the_db()
+    donor = db.read_index(table="donors", index_field_name="name", index=name)
+
+    if donor is None:
+        await ctx.respond(ephemeral=True, content=f"The donor `{name}` does not exist!")
+        return
+
+    elif donor[2] not in [1, 3]:
+        await ctx.respond(ephemeral=True, content="This donor is already enabled")
+        return
+
+    else:
+        await asyncio.to_thread(cleaninty_abstractor().refresh_donor_lt_time, name)
+
+        await ctx.respond(
+            ephemeral=True,
+            content=f"`{name}` is now enabled\nuse disabledonor to re-disable it if wanted",
+        )
+        await log(f"{ctx.author.name} ({ctx.author.id}) enabled `{name}`")
 
 
 async def log(string: str):
@@ -578,8 +673,19 @@ async def on_application_command_error(
 ):
     if isinstance(error, (commands.NotOwner, commands.MissingRole)):
         await ctx.respond(ephemeral=True, content="you can't use this command!")
+
     elif isinstance(error, soap_cat_errors.NoDonors):
         await ctx.respond(ephemeral=True, content=error.args[0])
+
+    elif isinstance(error, soap_cat_errors.BorkedDonor):
+        the_db().set_donor_lt_time(error.args[1], 3)
+        await ctx.respond(
+            content=f"Uh oh! {error.args[1]} seems to be broken!\nit has been disabled, please try again"
+        )
+        log(
+            f"<@191364692751417344> <@966381737393414144> `{error.args[1]}` is broken! it's been disabled, someone fix it plz"
+        )
+
     else:
         await ctx.respond(
             ephemeral=True,

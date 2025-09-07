@@ -47,7 +47,7 @@ class the_db:
             pass
 
         self.cursor.execute(
-            "SELECT * FROM donors WHERE last_transferred < %s ORDER BY last_transferred ASC",
+            "SELECT * FROM donors WHERE last_transferred BETWEEN 11 AND %s ORDER BY last_transferred ASC",
             (utc_time_ready_for_transfer,),
         )
         result = self.cursor.fetchone()
@@ -58,7 +58,7 @@ class the_db:
             pass
 
         if result is None:
-            raise soap_cat_errors.NoDonors("We're out of donors! See soapcheck")
+            raise soap_cat_errors.NoDonors(message="We're out of donors! See soapcheck")
 
         return result[0], result[1]
 
@@ -88,3 +88,17 @@ class the_db:
         self.cursor.execute("SELECT * FROM donors ORDER BY last_transferred ASC")
 
         return self.cursor.fetchall()
+
+    def set_donor_lt_time(self, name: str, last_transferred: int) -> None:
+        # is this needed?
+        try:
+            self.cursor.fetchall()
+        except Exception:
+            pass
+
+
+        self.cursor.execute(
+            "UPDATE donors SET last_transferred = %s WHERE name = %s",
+            (last_transferred, name),
+        )
+        self.connection.commit()

@@ -9,7 +9,7 @@ oh and don't forget the DB stuff
 - ToxicAven for all of soupman
 - pycord devs
 - starlitskies for the autosoap script (used as inspiration)
-- lugioalma for cleaninty
+- lugioalma for cleaninty (i've copied a lot of code from cleaninty)
 - probably more
 
 
