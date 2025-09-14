@@ -140,6 +140,16 @@ async def doasoap(
         if serial == "SKIP":
             resultStr += "skipping serial check\n"
 
+        elif serial[0] not in ["C", "S", "A", "Y", "Q", "N"]:
+            resultStr += f"{serial[0]} is not a valid console digit" + (
+                "(nice aliexpress serial)" if serial[0] == "U" else ""
+            )
+            await ctx.respond(ephemeral=True, content=resultStr)
+            await log(
+                f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to invalid serial"
+            )
+            return
+
         elif len(serial) not in [10, 11, 12]:
             resultStr += f"invalid serial length, must be 10-12 characters long instead of {len(serial)}"
             await ctx.respond(ephemeral=True, content=resultStr)
@@ -169,7 +179,7 @@ async def doasoap(
         try:
             dev = SimpleCtrDevice(json_string=soap_json)
             soapMan = CtrSoapManager(dev, False)
-            helpers.CtrSoapCheckRegister(soapMan)
+            await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
             cleaninty = cleaninty_abstractor()
         except Exception as e:
             await ctx.respond(
@@ -218,7 +228,7 @@ async def doasoap(
 
             resultStr += f" `{donor_json_name}` is now on cooldown\n"
 
-            helpers.CtrSoapCheckRegister(soapMan)
+            await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
             soap_json = cleaninty.clean_json(soap_json)
 
         else:
@@ -230,7 +240,7 @@ async def doasoap(
                 result_string=resultStr,
             )
 
-        helpers.CtrSoapCheckRegister(soapMan)
+        await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
         soap_json = cleaninty.clean_json(soap_json)
 
     await log(f"soap for {ctx.author.global_name} ({ctx.author.id}) succeeded")
@@ -244,7 +254,6 @@ async def doasoap(
 
     channel = bot.get_channel(ctx.channel_id)
 
-
     member_name = ctx.channel.name.removesuffix("-needs-cleaning-🧼")
     member_name_2 = channel.name.removesuffix("-needs-cleaning-🧼").replace("-", ".")
 
@@ -252,7 +261,6 @@ async def doasoap(
     member_obj_2 = ctx.interaction.guild.get_member_named(member_name_2)
 
     # await channel.send(f"{member_obj.mention} :arrow_down:")
-
 
     await log(
         f"Debug info:\nmember_obj is {member_obj}\n"
@@ -460,7 +468,9 @@ async def uploaddonortodb(
         ephemeral=True,
         content=f"`{donor_name}` has been uploaded to the donor database\nwant to remove it? contact blueness",
     )
-    await log(f"{ctx.author.global_name} ({ctx.author.id}) uploaded {donor_name} to the db")
+    await log(
+        f"{ctx.author.global_name} ({ctx.author.id}) uploaded {donor_name} to the db"
+    )
 
 
 @bot.slash_command(description="get the info of a donor")
@@ -595,7 +605,7 @@ async def enabledonor(ctx: discord.ApplicationContext, name: str):
 
 
 async def log(string: str):
-    await bot.get_channel(1399953634560573551).send(content=string)
+    await bot.get_channel(int(os.getenv("LOG_CHANNEL"))).send(content=string)
     print(string)
 
 
