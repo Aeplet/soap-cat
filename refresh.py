@@ -7,7 +7,11 @@ myDB = the_db()
 donors = the_db().read_donor_table()
 
 for i in range(len(donors)):
-    print(donors[i][0])
-    cleaninty.refresh_donor_lt_time(donors[i][0])
+    if donors[i][2] <= 10:
+        print(f"not refreshing {donors[i][0]}")
+        continue
+    else:
+        print(f"refreshing {donors[i][0]}")
+        cleaninty.refresh_donor_lt_time(donors[i][0])
 
 myDB.exit()
