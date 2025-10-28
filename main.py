@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import discord
 import json
+import re
 import os
 import requests
 import soap_cat_errors
@@ -254,11 +255,22 @@ async def doasoap(
 
     channel = bot.get_channel(ctx.channel_id)
 
-    member_name = ctx.channel.name.removesuffix("-needs-cleaning-🧼")
-    member_name_2 = channel.name.removesuffix("-needs-cleaning-🧼").replace("-", ".")
+    # Extract the user ID
+    topic = getattr(channel, "topic", None)
+    user_id = None
+    # Extract the user ID from the channel topic
+    if topic:
+        match = re.search(r"<@!?(\d+)>", topic)
+        if match:
+            try:
+                user_id = int(match.group(1))
+            except ValueError:
+                user_id = None
 
-    member_obj = ctx.guild.get_member_named(member_name)
-    member_obj_2 = ctx.interaction.guild.get_member_named(member_name_2)
+    member_obj = ctx.guild.get_member(user_id)
+    member_name = member_obj.name if member_obj else None
+    member_name_2 = ctx.channel.name.removesuffix("-needs-cleaning-🧼")
+    member_obj_2 = ctx.guild.get_member_named(member_name)
 
     # await channel.send(f"{member_obj.mention} :arrow_down:")
 
@@ -266,7 +278,9 @@ async def doasoap(
         f"Debug info:\nmember_obj is {member_obj}\n"
         + f"member_obj_2 is {member_obj_2}\n"
         + f"member_name is {member_name}\n"
-        + f"member_name_2 is {member_name_2}"
+        + f"member_name_2 is {member_name_2}\n"
+        + f"user_id is {user_id}\n"
+        + f"topic is {topic}"
     )
 
     if lottery:
