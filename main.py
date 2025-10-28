@@ -280,7 +280,6 @@ async def doasoap(
         + f"member_name is {member_name}\n"
         + f"member_name_2 is {member_name_2}\n"
         + f"user_id is {user_id}\n"
-        + f"topic is {topic}"
     )
 
     if lottery:
