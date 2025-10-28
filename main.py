@@ -270,7 +270,7 @@ async def doasoap(
     member_obj = ctx.guild.get_member(user_id)
     member_name = member_obj.name if member_obj else None
     member_name_2 = ctx.channel.name.removesuffix("-needs-cleaning-🧼")
-    member_obj_2 = ctx.guild.get_member_named(member_name)
+    member_obj_2 = ctx.guild.get_member_named(member_name_2)
 
     # await channel.send(f"{member_obj.mention} :arrow_down:")
 
