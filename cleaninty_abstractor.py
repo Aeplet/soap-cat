@@ -1,4 +1,5 @@
 import json
+import soap_cat_errors
 from cleaninty.ctr.simpledevice import SimpleCtrDevice
 from cleaninty.ctr.soap.manager import CtrSoapManager
 from cleaninty.ctr.soap import helpers, ias
@@ -143,10 +144,13 @@ class cleaninty_abstractor:
                 language=source_json_object["language"],
                 result_string=resultStr,
             )
-
-        source_json, donor_json, resultStr = self.do_system_transfer(
-            source_json=source_json, donor_json=donor_json, result_string=resultStr
-        )
+        try:
+            source_json, donor_json, resultStr = self.do_system_transfer(
+                source_json, donor_json, resultStr
+            )
+        except SoapCodeError as e:
+            raise soap_cat_errors.BorkedDonor(donor_name=donor_json_name, soapcodeerror=e)
+        
         donor_json = self.clean_json(donor_json)
         myDB.update_donor(donor_json_name, donor_json)
         self.refresh_donor_lt_time(donor_json_name)

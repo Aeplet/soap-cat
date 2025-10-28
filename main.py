@@ -106,12 +106,12 @@ async def doasoap(
             )
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed "
-                + "due to non-200 status code ({request_data.status_code} when fetching exefs from link"
+                + "due to non-200 status code ({request_data.status_code}) when fetching exefs from link"
             )  # split into 2 so it isn't so long
             return
 
         soap_json = generate_json(request_data.content)
-        soap_name = "temporary name"
+        soap_name = get_json_serial(soap_json).upper()
 
     elif console_json is not None:
         soap_json = await console_json.read()
@@ -271,7 +271,7 @@ async def doasoap(
 
     if lottery:
         await channel.send(
-            """The SOAP Transfer has completed! Please boot normally (with the SD inserted into the console), and then go to `System Settings -> Other Settings -> Profile -> Region Settings` and ensure the desired country is selected. If using Pretendo you will need to switch to Nintendo with Nimbus first.
+            f"""The SOAP Transfer has completed! Please boot {soap_serial} normally (with the SD inserted into the console), and then go to `System Settings -> Other Settings -> Profile -> Region Settings` and ensure the desired country is selected. If using Pretendo you will need to switch to Nintendo with Nimbus first.
 
 Then try opening the eShop.
 
@@ -282,7 +282,7 @@ Please let us know if the eshop functions or not.""",
 
     else:
         await channel.send(
-            """The SOAP Transfer has completed! Please boot normally (with the SD inserted into the console), and then go to `System Settings -> Other Settings -> Profile -> Region Settings` and ensure the desired country is selected. If using Pretendo you will need to switch to Nintendo with Nimbus first.
+            f"""The SOAP Transfer has completed! Please boot {soap_serial} normally (with the SD inserted into the console), and then go to `System Settings -> Other Settings -> Profile -> Region Settings` and ensure the desired country is selected. If using Pretendo you will need to switch to Nintendo with Nimbus first.
 
 Then try opening the eShop.
 
@@ -548,6 +548,7 @@ async def downloaddonors(ctx: discord.ApplicationContext):
 
 
 @bot.slash_command(name="disabledonor")
+@can_run()
 @discord.option(name="name", type=str)
 async def disabledonor(ctx: discord.ApplicationContext, name: str):
     try:
@@ -576,6 +577,7 @@ async def disabledonor(ctx: discord.ApplicationContext, name: str):
 
 
 @bot.slash_command(name="enabledonor")
+@can_run()
 @discord.option(name="name", type=str)
 async def enabledonor(ctx: discord.ApplicationContext, name: str):
     try:
@@ -595,7 +597,13 @@ async def enabledonor(ctx: discord.ApplicationContext, name: str):
         return
 
     else:
-        await asyncio.to_thread(cleaninty_abstractor().refresh_donor_lt_time, name)
+        try:
+            await asyncio.to_thread(cleaninty_abstractor().refresh_donor_lt_time, name)
+        except SoapCodeError:
+            await ctx.respond(
+                ephemeral=True,
+                content=f"enabling {name} failed!\nthe donor is likely broken, plz fix",
+            )
 
         await ctx.respond(
             ephemeral=True,
