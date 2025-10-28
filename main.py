@@ -267,7 +267,14 @@ async def doasoap(
             except ValueError:
                 user_id = None
 
+    # Try to get member
     member_obj = ctx.guild.get_member(user_id)
+    # Fallback to fetching from API
+    if not member_obj:
+      try:
+          member_obj = await ctx.guild.fetch_member(user_id)
+      except (discord.NotFound, discord.Forbidden):
+          member_obj = None
     member_name = member_obj.name if member_obj else None
     member_name_2 = ctx.channel.name.removesuffix("-needs-cleaning-🧼")
     member_obj_2 = ctx.guild.get_member_named(member_name_2)
