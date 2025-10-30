@@ -285,14 +285,17 @@ async def doasoap(
         file=discord.File(fp=StringIO(soap_json), filename=f"{soap_name}.json"),
     )
 
-    # Try to get member
-    member_obj = ctx.guild.get_member(user_id)
-    # Fallback to fetching from API
-    if not member_obj:
-      try:
-          member_obj = await ctx.guild.fetch_member(user_id)
-      except (discord.NotFound, discord.Forbidden):
-          member_obj = None
+    # Try to get member (only if user_id was found)
+    if user_id is not None:
+        member_obj = ctx.guild.get_member(user_id)
+        # Fallback to fetching from API
+        if not member_obj:
+            try:
+                member_obj = await ctx.guild.fetch_member(user_id)
+            except (discord.NotFound, discord.Forbidden):
+                member_obj = None
+    else:
+        member_obj = None
     member_name = member_obj.name if member_obj else None
 
     # await channel.send(f"{member_obj.mention} :arrow_down:")
