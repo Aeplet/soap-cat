@@ -86,6 +86,19 @@ async def doasoap(
     )
     resultStr = str("")
 
+    # Extract channel and user_id
+    channel = bot.get_channel(ctx.channel_id)
+    topic = getattr(channel, "topic", None)
+    user_id = None
+    if topic:
+        match = re.search(r"<@!?(\d+)>", topic)
+        if match:
+            try:
+                user_id = int(match.group(1))
+            except ValueError:
+                user_id = None
+    await send_soap_status(bot, user_id, "PROGRESS", "START")
+
     if essential_exefs is not None:
         try:
             soap_json = generate_json(await essential_exefs.read())
@@ -95,6 +108,7 @@ async def doasoap(
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to loading the essential failing"
             )
+            await send_soap_status(bot, user_id, "ERROR", "ESSENTIAL_LOAD_FAILED")
             return
 
     elif essential_exefs_link is not None:
@@ -109,6 +123,7 @@ async def doasoap(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed "
                 + "due to non-200 status code ({request_data.status_code}) when fetching exefs from link"
             )  # split into 2 so it isn't so long
+            await send_soap_status(bot, user_id, "ERROR", "ESSENTIAL_LINK_FAILED")
             return
 
         soap_json = generate_json(request_data.content)
@@ -122,6 +137,7 @@ async def doasoap(
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to invalid json"
             )
+            await send_soap_status(bot, user_id, "ERROR", "INVALID_JSON")
             return
     else:
         await ctx.respond(
@@ -131,12 +147,15 @@ async def doasoap(
         await log(
             f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to lack of file"
         )
+        await send_soap_status(bot, user_id, "ERROR", "NO_FILE")
         return
 
     if serial is not None:
         # .upper() is just for consistency
         soap_serial = get_json_serial(soap_json).upper()
         serial = str(serial).upper()
+
+        await send_soap_status(bot, user_id, "PROGRESS", "SERIAL_CHECK_ATTEMPT")
 
         if serial == "SKIP":
             resultStr += "skipping serial check\n"
@@ -149,6 +168,7 @@ async def doasoap(
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to invalid serial"
             )
+            await send_soap_status(bot, user_id, "ERROR", "INVALID_SERIAL")
             return
 
         elif len(serial) not in [10, 11, 12]:
@@ -157,6 +177,7 @@ async def doasoap(
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to invalid serial"
             )
+            await send_soap_status(bot, user_id, "ERROR", "INVALID_SERIAL_LENGTH")
             return
 
         elif serial[: len(soap_serial)] != soap_serial:
@@ -166,11 +187,13 @@ async def doasoap(
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to mismatching serials"
             )
+            await send_soap_status(bot, user_id, "ERROR", "SERIAL_MISMATCH")
             return
         else:
             resultStr += "secinfo serial and given serial match, continuing\n"
 
     if soap_lock.locked():
+        await send_soap_status(bot, user_id, "PROGRESS", "QUEUED")
         await ctx.respond(
             ephemeral=True,
             content="Another soap operation is currently being processed, please wait...",
@@ -182,6 +205,7 @@ async def doasoap(
             soapMan = CtrSoapManager(dev, False)
             await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
             cleaninty = cleaninty_abstractor()
+            await send_soap_status(bot, user_id, "PROGRESS", "CLEANINTY_INIT")
         except Exception as e:
             await ctx.respond(
                 ephemeral=True, content=f"Cleaninty error:\n```\n{e}\n```"
@@ -189,9 +213,12 @@ async def doasoap(
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to a cleaninty error"
             )
+            # Send SOAP_STATUS message
+            await send_soap_status(bot, user_id, "ERROR", "CLEANINTY")
             return
 
         soap_json = dev.serialize_json()
+        await send_soap_status(bot, user_id, "PROGRESS", "CLEANINTY_SERIAL_CHECK")
 
         if json.loads(soap_json)["region"] == "USA":
             source_region_change = "JPN"
@@ -203,6 +230,7 @@ async def doasoap(
             source_language_change = "en"
 
         resultStr += "Attempting eShopRegionChange on source...\n"
+        await send_soap_status(bot, user_id, "PROGRESS", "ESHOP_REGION_CHANGE_ATTEMPT")
         try:
             soap_json, resultStr = await asyncio.to_thread(
                 cleaninty.eshop_region_change,
@@ -212,9 +240,10 @@ async def doasoap(
                 language=source_language_change,
                 result_string=resultStr,
             )
-
+            await send_soap_status(bot, user_id, "PROGRESS", "ESHOP_REGION_CHANGE_SUCCESS")
         except SoapCodeError as err:
             if err.soaperrorcode != 602:
+                await send_soap_status(bot, user_id, "ERROR", "UNKNOWN")
                 await log(
                     f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to non-602 soap error code (wtf)"
                 )
@@ -222,10 +251,11 @@ async def doasoap(
 
             resultStr += "sticky titles are sticking, doing system transfer...\n"
             lottery = False
-
+            await send_soap_status(bot, user_id, "PROGRESS", "SYSTEM_TRANSFER_ATTEMPT")
             soap_json, donor_json_name, resultStr = await asyncio.to_thread(
                 cleaninty.do_transfer_with_donor, soap_json, resultStr
             )
+            await send_soap_status(bot, user_id, "PROGRESS", "SYSTEM_TRANSFER_SUCCESS")
 
             resultStr += f" `{donor_json_name}` is now on cooldown\n"
 
@@ -240,32 +270,20 @@ async def doasoap(
                 json_string=soap_json,
                 result_string=resultStr,
             )
+            await send_soap_status(bot, user_id, "PROGRESS", "ESHOP_DELETE_SUCCESS")
 
         await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
         soap_json = cleaninty.clean_json(soap_json)
 
     await log(f"soap for {ctx.author.global_name} ({ctx.author.id}) succeeded")
     resultStr += "Done!"
+    await send_soap_status(bot, user_id, "PROGRESS", "SUCCESS")
 
     await ctx.respond(
         ephemeral=True,
         content=resultStr,
         file=discord.File(fp=StringIO(soap_json), filename=f"{soap_name}.json"),
     )
-
-    channel = bot.get_channel(ctx.channel_id)
-
-    # Extract the user ID
-    topic = getattr(channel, "topic", None)
-    user_id = None
-    # Extract the user ID from the channel topic
-    if topic:
-        match = re.search(r"<@!?(\d+)>", topic)
-        if match:
-            try:
-                user_id = int(match.group(1))
-            except ValueError:
-                user_id = None
 
     # Try to get member
     member_obj = ctx.guild.get_member(user_id)
@@ -276,16 +294,12 @@ async def doasoap(
       except (discord.NotFound, discord.Forbidden):
           member_obj = None
     member_name = member_obj.name if member_obj else None
-    member_name_2 = ctx.channel.name.removesuffix("-needs-cleaning-🧼")
-    member_obj_2 = ctx.guild.get_member_named(member_name_2)
 
     # await channel.send(f"{member_obj.mention} :arrow_down:")
 
     await log(
         f"Debug info:\nmember_obj is {member_obj}\n"
-        + f"member_obj_2 is {member_obj_2}\n"
         + f"member_name is {member_name}\n"
-        + f"member_name_2 is {member_name_2}\n"
         + f"user_id is {user_id}\n"
     )
 
@@ -299,6 +313,8 @@ You hit the SOAP lottery, no system transfer was needed for this SOAP, if you ar
 
 Please let us know if the eshop functions or not.""",
         )
+        # Send SOAP_STATUS message
+        await send_soap_status(bot, user_id, "LOTTERY")
 
     else:
         await channel.send(
@@ -310,6 +326,8 @@ A system transfer was required to do this SOAP, if you are trying to transfer yo
 
 Please let us know if the eshop functions or not.""",
         )
+        # Send SOAP_STATUS message
+        await send_soap_status(bot, user_id, "SUCCESS")
 
 
 @bot.slash_command(description="check soap donor availability")
@@ -635,6 +653,20 @@ async def enabledonor(ctx: discord.ApplicationContext, name: str):
 async def log(string: str):
     await bot.get_channel(int(os.getenv("LOG_CHANNEL"))).send(content=string)
     print(string)
+
+
+async def send_soap_status(bot_obj, user_id, status, error_type=None):
+    bots_only_channel = os.getenv("BOTS_ONLY_CHANNEL")
+    if not bots_only_channel:
+        await log("BOTS_ONLY_CHANNEL not set, skipping SOAP_STATUS message")
+        return
+    if not user_id:
+        await log("User ID missing, skipping SOAP_STATUS message")
+        return
+    message_parts = ["SOAP_STATUS", str(user_id), str(status).upper()]
+    if error_type:
+        message_parts.append(str(error_type).upper())
+    await bot_obj.get_channel(int(bots_only_channel)).send(" ".join(message_parts))
 
 
 def donorcheck(input_json: str) -> bool:
