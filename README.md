@@ -20,4 +20,12 @@ Soapy is a Pycord bot that works alongside [Maidy the Cat](https://github.com/bl
 - lugioalma for cleaninty (i've copied a lot of code from cleaninty)
 - probably more
 
+---
+### Why a cat?
+Cats are cute.
+
+### How can I get help running this bot?
+We don't typically offer support running Soapy or Maidy, as we encourage most who need SOAPs to visit our community directly. Feel free to [join](https://discord.gg/qNZePF6RxP) and ask your question if you want, but there is no guarantee of a response.
+
 psst, i hid a secret somewhere, good luck finding it
+
