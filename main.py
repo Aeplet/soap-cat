@@ -308,11 +308,11 @@ async def doasoap(
 
     if lottery:
         # Send SOAP_STATUS message
-        await send_soap_status(bot, user_id, "LOTTERY")
+        await send_soap_status(bot, user_id, "LOTTERY", serial)
 
     else:
         # Send SOAP_STATUS message
-        await send_soap_status(bot, user_id, "SUCCESS")
+        await send_soap_status(bot, user_id, "SUCCESS", serial)
 
 
 @bot.slash_command(description="check soap donor availability")
@@ -640,7 +640,7 @@ async def log(string: str):
     print(string)
 
 
-async def send_soap_status(bot_obj, user_id, status, error_type=None):
+async def send_soap_status(bot_obj, user_id, status, error_type=None, serial=None):
     bots_only_channel = os.getenv("BOTS_ONLY_CHANNEL")
     if not bots_only_channel:
         await log("BOTS_ONLY_CHANNEL not set, skipping SOAP_STATUS message")
@@ -649,6 +649,8 @@ async def send_soap_status(bot_obj, user_id, status, error_type=None):
         await log("User ID missing, skipping SOAP_STATUS message")
         return
     message_parts = ["SOAP_STATUS", str(user_id), str(status).upper()]
+    if serial:
+        message_parts.append(str(serial))
     if error_type:
         message_parts.append(str(error_type).upper())
     await bot_obj.get_channel(int(bots_only_channel)).send(" ".join(message_parts))
