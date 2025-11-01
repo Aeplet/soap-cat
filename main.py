@@ -307,28 +307,10 @@ async def doasoap(
     )
 
     if lottery:
-        await channel.send(
-            f"""The SOAP Transfer has completed! Please boot {soap_serial} normally (with the SD inserted into the console), and then go to `System Settings -> Other Settings -> Profile -> Region Settings` and ensure the desired country is selected. If using Pretendo you will need to switch to Nintendo with Nimbus first.
-
-Then try opening the eShop.
-
-You hit the SOAP lottery, no system transfer was needed for this SOAP, if you are trying to transfer your old console to this one you can do it right away.
-
-Please let us know if the eshop functions or not.""",
-        )
         # Send SOAP_STATUS message
         await send_soap_status(bot, user_id, "LOTTERY")
 
     else:
-        await channel.send(
-            f"""The SOAP Transfer has completed! Please boot {soap_serial} normally (with the SD inserted into the console), and then go to `System Settings -> Other Settings -> Profile -> Region Settings` and ensure the desired country is selected. If using Pretendo you will need to switch to Nintendo with Nimbus first.
-
-Then try opening the eShop.
-
-A system transfer was required to do this SOAP, if you are trying to transfer your old console to this one you will need to wait a week.
-
-Please let us know if the eshop functions or not.""",
-        )
         # Send SOAP_STATUS message
         await send_soap_status(bot, user_id, "SUCCESS")
 
