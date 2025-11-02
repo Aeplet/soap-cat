@@ -201,11 +201,11 @@ async def doasoap(
 
     async with soap_lock:
         try:
+            await send_soap_status(bot, user_id, "PROGRESS", "CLEANINTY_INIT")
             dev = SimpleCtrDevice(json_string=soap_json)
             soapMan = CtrSoapManager(dev, False)
             await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
             cleaninty = cleaninty_abstractor()
-            await send_soap_status(bot, user_id, "PROGRESS", "CLEANINTY_INIT")
         except Exception as e:
             await ctx.respond(
                 ephemeral=True, content=f"Cleaninty error:\n```\n{e}\n```"
@@ -218,7 +218,7 @@ async def doasoap(
             return
 
         soap_json = dev.serialize_json()
-        await send_soap_status(bot, user_id, "PROGRESS", "CLEANINTY_SERIAL_CHECK")
+        await send_soap_status(bot, user_id, "PROGRESS", "CLEANINTY_INIT_SUCCESS")
 
         if json.loads(soap_json)["region"] == "USA":
             source_region_change = "JPN"
@@ -240,7 +240,9 @@ async def doasoap(
                 language=source_language_change,
                 result_string=resultStr,
             )
-            await send_soap_status(bot, user_id, "PROGRESS", "ESHOP_REGION_CHANGE_SUCCESS")
+            await send_soap_status(
+                bot, user_id, "PROGRESS", "ESHOP_REGION_CHANGE_SUCCESS"
+            )
         except SoapCodeError as err:
             if err.soaperrorcode != 602:
                 await send_soap_status(bot, user_id, "ERROR", "UNKNOWN")
