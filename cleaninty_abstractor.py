@@ -193,10 +193,9 @@ def _run_unregister(
         virtual = True
 
     if virtual:
-        result_string += "Virtual account link! Attempt detach by error..."
+        result_string += "Virtual account link! Attempt detach by error...\n"
         device.reboot()
 
-        result_string += "Initializing console session..."
         helpers.CtrSoapUseSystemApps(soap_device, helpers.SysApps.SYSTRANSFER)
         helpers.CtrSoapSessionConnect(soap_device)
 
@@ -214,9 +213,8 @@ def _run_unregister(
         helpers.CtrSoapCheckRegister(soap_device)
 
         if soap_device.account_status != "U":
-            result_string += "Unregister..."
             ias.Unregister(soap_device, ias.GetChallenge(soap_device).challenge)
             soap_device.unregister_account()
         else:
-            result_string += "Unregistered!"
+            result_string += "Unregistered!\n"
     return result_string
