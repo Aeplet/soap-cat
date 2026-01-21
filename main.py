@@ -396,7 +396,7 @@ async def uploaddonortodb(
             donor_json = generate_json(essential=await donor_exefs_file.read())
             if name is None:
                 donor_name = donor_exefs_file.filename[:-6]
-            else
+            else:
                 donor_name = name
         except Exception as e:
             await ctx.respond(ephemeral=True, content=e)
@@ -412,7 +412,7 @@ async def uploaddonortodb(
             json.loads(donor_json)  # Validate the json, output useless
             if name is None:
                 donor_name = donor_exefs_file.filename[:-6]
-            else
+            else:
                 donor_name = name
         except Exception:
             await ctx.respond(ephemeral=True, content="Failed to load json")
