@@ -376,6 +376,12 @@ async def soapcheck(ctx: discord.ApplicationContext):
     required=False,
     description="any notes you want attached to the donor",
 )
+@discord.option(
+    "name",
+    str,
+    required=False,
+    description="name for the donor",
+)
 async def uploaddonortodb(
     ctx: discord.ApplicationContext,
     donor_json_file: discord.Attachment,
