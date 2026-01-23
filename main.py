@@ -18,7 +18,6 @@ from cleaninty_abstractor import cleaninty_abstractor
 from cleaninty.nintendowifi.soapenvelopebase import SoapCodeError
 from io import BytesIO, StringIO
 from pyctr.type.exefs import ExeFSReader
-from typing import Literal, TYPE_CHECKING, Optional
 
 
 bot = discord.Bot(owner_id=966381737393414144)
@@ -387,7 +386,7 @@ async def uploaddonortodb(
     donor_json_file: discord.Attachment,
     donor_exefs_file: discord.Attachment,
     note: str,
-    name: str | None = None
+    name: str
 ):
     try:
         await ctx.defer(ephemeral=True)
@@ -417,7 +416,7 @@ async def uploaddonortodb(
             donor_json = donor_json.decode("utf-8")
             json.loads(donor_json)  # Validate the json, output useless
             if name is None:
-                donor_name = donor_exefs_file.filename[:-6]
+                donor_name = donor_json_file.filename[:-6]
             else:
                 donor_name = name
         except Exception:
