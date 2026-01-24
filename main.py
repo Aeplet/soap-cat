@@ -41,6 +41,7 @@ def can_run():
 
 @bot.slash_command(description="does a soap")
 @can_run()
+@commands.cooldown(1, 5, commands.BucketType.channel)
 @discord.option(
     "serial",
     str,
@@ -204,15 +205,12 @@ async def doasoap(
             await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
             cleaninty = cleaninty_abstractor()
         except Exception as e:
-            await ctx.respond(
-                ephemeral=True, content=f"Cleaninty error:\n```\n{e}\n```"
-            )
             await log(
                 f"soap for {ctx.author.global_name} ({ctx.author.id}) failed due to a cleaninty error"
             )
             # Send SOAP_STATUS message
             await send_soap_status(bot, user_id, "ERROR", "CLEANINTY")
-            return
+            raise e
 
         soap_json = dev.serialize_json()
         await send_soap_status(bot, user_id, "PROGRESS", "CLEANINTY_INIT_SUCCESS")
@@ -763,6 +761,12 @@ async def on_application_command_error(
 ):
     if isinstance(error, commands.MissingRole):
         await ctx.respond(ephemeral=True, content="you can't use this command!")
+
+    elif isinstance(error, commands.errors.CommandOnCooldown):
+        await ctx.respond(
+            ephemeral=True,
+            content=f"This command is currently on cooldown to avoid double-soaping, please wait {str(error.retry_after)[:4]}s",
+        )
 
     elif isinstance(error, soap_cat_errors.NoDonors):
         await ctx.respond(ephemeral=True, content=error.args[0])
