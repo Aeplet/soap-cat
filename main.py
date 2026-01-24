@@ -6,7 +6,6 @@ import re
 import os
 import requests
 import soap_cat_errors
-import zipfile
 from base64 import b64decode
 from cleaninty.ctr.simpledevice import SimpleCtrDevice
 from cleaninty.ctr.soap.manager import CtrSoapManager
@@ -20,7 +19,7 @@ from io import BytesIO, StringIO
 from pyctr.type.exefs import ExeFSReader
 
 
-bot = discord.Bot(owner_id=966381737393414144)
+bot = discord.Bot()
 log_channel = None
 load_dotenv()
 soap_lock = asyncio.Lock()
@@ -28,9 +27,7 @@ soap_lock = asyncio.Lock()
 
 def can_run():
     async def uhhhhhhh(interaction: discord.Interaction) -> bool:
-        if interaction.user.id == bot.owner_id:
-            return True
-        for id in [1345177409154191414, 1316931678509334548]:
+        for id in [1345177409154191414, 1316931678509334548, 1398475463927791697]:
             try:
                 if interaction.user.roles[-1] >= interaction.guild.get_role(id):
                     return True
@@ -340,10 +337,15 @@ async def soapcheck(ctx: discord.ApplicationContext):
 
     the_time = int(datetime.datetime.now(datetime.UTC).timestamp())
     available_donors = 0
+    disabled_donors = 0
+    broken_donors = 0
 
     for i in range(loopcount):
-        if donors[i][2] in [1, 3]:
+        if donors[i][2] == 1:
             embed.add_field(name=donors[i][0], value="Disabled")
+
+        elif donors[i][2] == 3:
+            embed.add_field(name=donors[i][0], value="Broken")
 
         elif (donors[i][2] + 604800) <= the_time:
             embed.add_field(name=donors[i][0], value="Ready!")
@@ -354,13 +356,18 @@ async def soapcheck(ctx: discord.ApplicationContext):
             )
 
     for i in range(len(donors)):
-        if (donors[i][2] + 604800) <= the_time:
+        if (donors[i][2] + 604800) <= the_time and donors[i][2] > 10:
             available_donors += 1
 
-        embed.set_footer(
-            text=f"There are {available_donors} donors available"
-            + (", not all are shown" if available_donors > 9 else "")
-        )
+        elif donors[i][2] == 1:
+            disabled_donors += 1
+
+        elif donors[i][2] == 3:
+            broken_donors += 1
+
+    embed.set_footer(
+        text=f"{len(donors)} total, {available_donors} available, {disabled_donors} disabled manually, {broken_donors} broken"
+    )
 
     await ctx.respond(ephemeral=True, embed=embed)
 
@@ -375,11 +382,18 @@ async def soapcheck(ctx: discord.ApplicationContext):
     required=False,
     description="any notes you want attached to the donor",
 )
+@discord.option(
+    "name",
+    str,
+    required=False,
+    description="if blank name is taken from the file name",
+)
 async def uploaddonortodb(
     ctx: discord.ApplicationContext,
     donor_json_file: discord.Attachment,
     donor_exefs_file: discord.Attachment,
     note: str,
+    name: str,
 ):
     try:
         await ctx.defer(ephemeral=True)
@@ -390,9 +404,15 @@ async def uploaddonortodb(
         if not donor_exefs_file.filename[-6:] == ".exefs":
             await ctx.respond(ephemeral=True, content="not a .exefs!")
             return
+
         try:
             donor_json = generate_json(essential=await donor_exefs_file.read())
-            donor_name = donor_exefs_file.filename[:-6]
+
+            if name is None:
+                donor_name = donor_exefs_file.filename[:-6]
+            else:
+                donor_name = name
+
         except Exception as e:
             await ctx.respond(ephemeral=True, content=e)
             return
@@ -401,11 +421,17 @@ async def uploaddonortodb(
         if not donor_json_file.filename[-5:] == ".json":
             await ctx.respond(ephemeral=True, content="not a .json!")
             return
+
         try:
             donor_json = await donor_json_file.read()
             donor_json = donor_json.decode("utf-8")
             json.loads(donor_json)  # Validate the json, output useless
-            donor_name = donor_json_file.filename[:-5]
+
+            if name is None:
+                donor_name = donor_json_file.filename[:-5]
+            else:
+                donor_name = name
+
         except Exception:
             await ctx.respond(ephemeral=True, content="Failed to load json")
             return
@@ -430,12 +456,10 @@ async def uploaddonortodb(
         )
         return
 
-    mySQL_DB = the_db()
+    db = the_db()
     cleaninty = cleaninty_abstractor()
 
-    mySQL_DB.cursor.execute("SELECT * FROM donors WHERE name = %s", (donor_name,))
-
-    if len(mySQL_DB.cursor.fetchall()) != 0:
+    if db.read_index(table="donors", index_field_name="name", index=name) is not None:
         await ctx.respond(
             ephemeral=True, content=f"`{donor_name}` is already in the db!"
         )
@@ -467,6 +491,7 @@ async def uploaddonortodb(
                 language=donor_language_change,
                 result_string="",
             )[0]
+
         except SoapCodeError as err:
             if err.soaperrorcode != 602:
                 raise err
@@ -481,7 +506,7 @@ async def uploaddonortodb(
                 result_string="",
             )[0]
 
-        mySQL_DB.write_donor(
+        db.write_donor(
             name=donor_name,
             json=cleaninty.clean_json(donor_json),
             last_transferred=cleaninty.get_last_moved_time(donor_json),
@@ -543,38 +568,44 @@ async def donorinfo(ctx: discord.ApplicationContext, name: str):
     await ctx.respond(ephemeral=True, embed=embed)
 
 
-@bot.slash_command(description="downloads all donors")
-@commands.is_owner()
-async def downloaddonors(ctx: discord.ApplicationContext):
+@bot.slash_command(description="renames a donor")
+@can_run()
+@discord.option("old_name", str)
+@discord.option("new_name", str)
+async def renamedonor(ctx: discord.ApplicationContext, old_name: str, new_name: str):
     try:
         await ctx.defer(ephemeral=True)
     except discord.errors.NotFound:
         return
 
-    donors = the_db().read_donor_table()
-    output = BytesIO()
-    output.write(
-        bytes.fromhex("504b0506000000000000000000000000000000000000")
-    )  # zip file header
-    output.seek(0)
-    zip = zipfile.ZipFile(output, "w")
+    db = the_db()
 
-    for i in range(len(donors)):
-        donor_file = bytes(donors[i][1].encode("ascii"))
+    if db.read_index(table="donors", index_field_name="name", index=old_name) is None:
+        await ctx.respond(
+            ephemeral=True, content=f"The donor `{old_name}` does not exist!"
+        )
+        return
 
-        donor_name = f"{donors[i][0]}.json"
-        zip.writestr(donor_name, donor_file)
-    zip.close()
+    db.cursor.execute(
+        "UPDATE donors SET name = %s WHERE name = %s",
+        (new_name, old_name),
+    )
+    db.connection.commit()
 
     await ctx.respond(
         ephemeral=True,
-        file=discord.File(fp=BytesIO(output.getvalue()), filename="donors.zip"),
+        content=f"`{old_name}` has been successfully renamed to `{new_name}`",
+    )
+    await log(
+        f"{ctx.author.name} ({ctx.author.id}) renamed `{old_name}` to `{new_name}`"
     )
 
 
-@bot.slash_command(name="disabledonor")
+@bot.slash_command(
+    description="disables a donor to stop it being used in soap operations"
+)
 @can_run()
-@discord.option(name="name", type=str)
+@discord.option("name", str)
 async def disabledonor(ctx: discord.ApplicationContext, name: str):
     try:
         await ctx.defer(ephemeral=True)
@@ -601,9 +632,9 @@ async def disabledonor(ctx: discord.ApplicationContext, name: str):
         await log(f"{ctx.author.name} ({ctx.author.id}) disabled `{name}`")
 
 
-@bot.slash_command(name="enabledonor")
+@bot.slash_command(description="enables a donor to use it in soap operations")
 @can_run()
-@discord.option(name="name", type=str)
+@discord.option("name", str)
 async def enabledonor(ctx: discord.ApplicationContext, name: str):
     try:
         await ctx.defer(ephemeral=True)
@@ -618,7 +649,7 @@ async def enabledonor(ctx: discord.ApplicationContext, name: str):
         return
 
     elif donor[2] not in [1, 3]:
-        await ctx.respond(ephemeral=True, content="This donor is already enabled")
+        await ctx.respond(ephemeral=True, content="This donor is not disabled")
         return
 
     else:
@@ -730,7 +761,7 @@ async def on_ready():
 async def on_application_command_error(
     ctx: discord.ApplicationContext, error: discord.DiscordException
 ):
-    if isinstance(error, (commands.NotOwner, commands.MissingRole)):
+    if isinstance(error, commands.MissingRole):
         await ctx.respond(ephemeral=True, content="you can't use this command!")
 
     elif isinstance(error, soap_cat_errors.NoDonors):

@@ -1,8 +1,8 @@
-DROP DATABASE IF EXISTS soap-cat-db;
+DROP DATABASE IF EXISTS `soap-cat-db`;
 
-CREATE DATABASE soap-cat-db;
+CREATE DATABASE `soap-cat-db`;
 
-USE soap-cat-db;
+USE `soap-cat-db`;
 
 CREATE TABLE
     donors (
