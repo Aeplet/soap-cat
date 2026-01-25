@@ -1,3 +1,4 @@
+import asyncio
 import discord
 import json
 from base64 import b64decode
@@ -14,16 +15,21 @@ class soupman(commands.Cog):
         self.bot = bot
 
     @discord.slash_command(description="Generate a consoles soap key (soupman)")
+    @discord.option(
+        "secinfo", discord.Attachment, description="secinfo.bin, SecureInfo_A"
+    )
+    @discord.option("otp", discord.Attachment, description="otp.bin")
     async def genjson(
         self,
         ctx: discord.ApplicationContext,
-        secinfo: discord.Option(discord.Attachment, "secinfo.bin, SecureInfo_A"),
-        otp: discord.Option(discord.Attachment, "otp.bin"),
+        secinfo: discord.Attachment,
+        otp: discord.Attachment,
     ):
         try:
             await ctx.defer(ephemeral=True)
         except discord.errors.NotFound:
             return
+
         print(f"{ctx.author} is generating a json from secinfo and otp...")
         secinfo_bytes = BytesIO(await secinfo.read())
         secinfo_bytes.seek(0x100)
@@ -46,7 +52,7 @@ class soupman(commands.Cog):
 
             dev = SimpleCtrDevice(json_string=jsonStr)
             soapMan = CtrSoapManager(dev, False)
-            helpers.CtrSoapCheckRegister(soapMan)
+            await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
             jsonStr = dev.serialize_json()
 
             serial = b64decode(json.loads(jsonStr)["secureinfo"])[0x102:0x112]
@@ -70,7 +76,8 @@ class soupman(commands.Cog):
         try:
             await ctx.respond(
                 ephemeral=True,
-                file=discord.File(fp=StringIO(jsonStr), filename="soap.json"), content=f"```\n{retStr}```"
+                file=discord.File(fp=StringIO(jsonStr), filename="soap.json"),
+                content=f"```\n{retStr}```",
             )
         except Exception:
             await ctx.respond(
@@ -81,10 +88,11 @@ class soupman(commands.Cog):
     @discord.slash_command(
         description="Generate a consoles soap key using essential.exefs (soupman)"
     )
+    @discord.option("essential", discord.Attachment, description="essential.exefs")
     async def genjsonessential(
         self,
         ctx: discord.ApplicationContext,
-        essential: discord.Option(discord.Attachment, "essential.exefs"),
+        essential: discord.Attachment,
     ):
         await ctx.defer(ephemeral=True)
 
@@ -92,12 +100,14 @@ class soupman(commands.Cog):
             reader = ExeFSReader(BytesIO(await essential.read()))
         except Exception:
             await ctx.respond(ephemeral=True, content="Failed to read essential")
-            return
+            raise
 
         if not "secinfo" and "otp" in reader.entries:
             await ctx.respond(ephemeral=True, content="Invalid essential")
             return
+
         print(f"{ctx.author} is generating a json from essential...")
+
         secinfo = reader.open("secinfo")
         secinfo.seek(0x100)
         country_byte = secinfo.read(1)
@@ -119,7 +129,7 @@ class soupman(commands.Cog):
 
             dev = SimpleCtrDevice(json_string=jsonStr)
             soapMan = CtrSoapManager(dev, False)
-            helpers.CtrSoapCheckRegister(soapMan)
+            await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
             jsonStr = dev.serialize_json()
 
             serial = b64decode(json.loads(jsonStr)["secureinfo"])[0x102:0x112]
@@ -136,27 +146,31 @@ class soupman(commands.Cog):
             await ctx.respond(
                 ephemeral=True, content=f"Cleaninty error:\n```\n{e}\n```"
             )
-            print(f"Cleaninty: {e}")
             print(f"{ctx.author} has failed to generate a json from essential")
-            return
+            raise e
 
         try:
             await ctx.respond(
                 ephemeral=True,
-                file=discord.File(fp=StringIO(jsonStr), filename="soap.json"), content=f"```\n{retStr}```"
+                file=discord.File(
+                    fp=StringIO(jsonStr), filename=(essential.filename[:-6] + ".json")
+                ),
+                content=f"```\n{retStr}```",
             )
 
         except Exception:
             await ctx.respond(
                 ephemeral=True, content="Failed to respond with soap.json"
             )
+            raise
         print(f"{ctx.author} has successfully generated a json from essential")
 
     @discord.slash_command(description="check console registry (soupman)")
+    @discord.option("jsonfile", discord.Attachment, description="soap.json")
     async def checkreg(
         self,
         ctx: discord.ApplicationContext,
-        jsonfile: discord.Option(discord.Attachment, "soap.json"),
+        jsonfile: discord.Attachment,
     ):
         try:
             await ctx.defer(ephemeral=True)
@@ -174,7 +188,7 @@ class soupman(commands.Cog):
         try:
             dev = SimpleCtrDevice(json_string=jsonStr)
             soapMan = CtrSoapManager(dev, False)
-            helpers.CtrSoapCheckRegister(soapMan)
+            await asyncio.to_thread(helpers.CtrSoapCheckRegister, soapMan)
             jsonStr = dev.serialize_json()
 
             serial = b64decode(json.loads(jsonStr)["secureinfo"])[0x102:0x112]
@@ -196,6 +210,9 @@ class soupman(commands.Cog):
         await ctx.respond(ephemeral=True, content=f"```\n{retStr}```")
 
     @discord.slash_command(description="check serial of console uniques (soupman)")
+    @discord.option(
+        "infile", discord.Attachment, description="essential.exefs or secinfo"
+    )
     async def checkserial(
         self,
         ctx: discord.ApplicationContext,
