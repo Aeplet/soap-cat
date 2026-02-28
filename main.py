@@ -301,6 +301,7 @@ async def doasoap(
         f"Debug info:\nmember_obj is {member_obj}\n"
         + f"member_name is {member_name}\n"
         + f"user_id is {user_id}\n"
+        + f"serial is {serial}\n"
     )
 
     if lottery:
